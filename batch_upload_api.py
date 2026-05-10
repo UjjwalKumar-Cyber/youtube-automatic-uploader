@@ -25,6 +25,9 @@ CSV_FILE = BASE_DIR / "uploads.csv"
 LOG_FILE = BASE_DIR / "upload_log.csv"
 CLIENT_SECRET_FILE = BASE_DIR / "client_secret.json"
 TOKEN_FILE = BASE_DIR / "youtube_token.pickle"
+CONFIG_FILE = BASE_DIR / "uploader_config.json"
+CSV_FIELDS = ["filename", "title", "description", "tags", "privacy", "publish_at", "thumbnail", "topic"]
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
 
 MAX_RETRIES = 3
 DELAY_BETWEEN_UPLOADS = 20
@@ -37,6 +40,82 @@ EMAIL_TO = os.getenv("EMAIL_TO", EMAIL_FROM)
 EMAIL_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
 
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
+
+def default_config():
+    return {
+        "privacy": "private",
+        "tags": "",
+        "description": "",
+        "schedule_mode": "none",
+        "publish_at": "",
+        "thumbnail_folder": "thumbnails",
+        "use_ai_when_blank": False,
+    }
+
+
+def load_config():
+    if not CONFIG_FILE.exists():
+        return default_config()
+
+    try:
+        with CONFIG_FILE.open(encoding="utf-8") as f:
+            config = json.load(f)
+    except json.JSONDecodeError:
+        config = {}
+
+    return {**default_config(), **config}
+
+
+def save_config(config):
+    with CONFIG_FILE.open("w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+
+
+def prompt_text(label, default=""):
+    suffix = f" [{default}]" if default else ""
+    value = input(f"{label}{suffix}: ").strip()
+    return value if value else default
+
+
+def prompt_choice(label, choices, default):
+    choices_text = "/".join(choices)
+    while True:
+        value = prompt_text(f"{label} ({choices_text})", default).lower()
+        if value in choices:
+            return value
+        print(f"Please choose one of: {choices_text}")
+
+
+def prompt_yes_no(label, default=False):
+    default_text = "y" if default else "n"
+    value = prompt_text(f"{label} (y/n)", default_text).lower()
+    return value in {"y", "yes"}
+
+
+def title_from_filename(filename):
+    return Path(filename).stem.replace("_", " ").replace("-", " ").title()
+
+
+def setup_defaults():
+    config = load_config()
+    print("Save your common upload settings. Press Enter to keep the value in brackets.\n")
+
+    config["privacy"] = prompt_choice("Default privacy", ["private", "unlisted", "public"], config["privacy"])
+    config["tags"] = prompt_text("Default tags, comma separated", config["tags"])
+    config["description"] = prompt_text("Default description", config["description"])
+    config["schedule_mode"] = prompt_choice("Default scheduling", ["none", "ask", "same"], config["schedule_mode"])
+
+    if config["schedule_mode"] == "same":
+        config["publish_at"] = prompt_text("Default publish_at YYYY-MM-DDTHH:MM:SS", config["publish_at"])
+    else:
+        config["publish_at"] = ""
+
+    config["thumbnail_folder"] = prompt_text("Thumbnail folder", config["thumbnail_folder"])
+    config["use_ai_when_blank"] = prompt_yes_no("Use AI metadata when title/description are blank", config["use_ai_when_blank"])
+
+    save_config(config)
+    print(f"\nSaved defaults to {CONFIG_FILE}")
 
 
 def load_uploads():
@@ -67,6 +146,102 @@ def load_uploads():
                 }
             )
     return uploads
+
+
+def load_csv_rows():
+    if not CSV_FILE.exists():
+        return []
+
+    with CSV_FILE.open(newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        return [row for row in reader if row.get("filename", "").strip()]
+
+
+def write_csv_rows(rows):
+    with CSV_FILE.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in CSV_FIELDS})
+
+
+def list_video_files():
+    VIDEOS_FOLDER.mkdir(exist_ok=True)
+    return sorted(
+        path
+        for path in VIDEOS_FOLDER.iterdir()
+        if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
+    )
+
+
+def find_matching_thumbnail(video_path, config):
+    thumbnail_folder = resolve_path(config.get("thumbnail_folder", "thumbnails"))
+    if not thumbnail_folder or not thumbnail_folder.exists():
+        return ""
+
+    for ext in [".jpg", ".jpeg", ".png", ".webp"]:
+        candidate = thumbnail_folder / f"{video_path.stem}{ext}"
+        if candidate.exists():
+            return str(candidate.relative_to(BASE_DIR))
+    return ""
+
+
+def add_videos_interactively(include_existing=False):
+    config = load_config()
+    rows = load_csv_rows()
+    existing = {row.get("filename", "").strip() for row in rows}
+    videos = list_video_files()
+
+    if not videos:
+        print(f"No video files found in {VIDEOS_FOLDER}")
+        return
+
+    added = 0
+    for video in videos:
+        if video.name in existing and not include_existing:
+            continue
+
+        print(f"\nVideo: {video.name}")
+        if not prompt_yes_no("Add/update this video", True):
+            continue
+
+        default_title = title_from_filename(video.name)
+        title = prompt_text("Title", default_title)
+        description = prompt_text("Description", config["description"])
+        tags = prompt_text("Tags, comma separated", config["tags"])
+        privacy = prompt_choice("Privacy", ["private", "unlisted", "public"], config["privacy"])
+
+        publish_at = ""
+        if config["schedule_mode"] == "same":
+            publish_at = config["publish_at"]
+        elif config["schedule_mode"] == "ask":
+            publish_at = prompt_text("Schedule publish_at YYYY-MM-DDTHH:MM:SS, blank for immediate", "")
+
+        thumbnail_default = find_matching_thumbnail(video, config)
+        thumbnail = prompt_text("Thumbnail path, blank for none", thumbnail_default)
+
+        topic = ""
+        if config.get("use_ai_when_blank"):
+            topic = prompt_text("AI topic, blank to skip", title)
+
+        new_row = {
+            "filename": video.name,
+            "title": title,
+            "description": description,
+            "tags": tags,
+            "privacy": privacy,
+            "publish_at": publish_at,
+            "thumbnail": thumbnail,
+            "topic": topic,
+        }
+
+        rows = [row for row in rows if row.get("filename", "").strip() != video.name]
+        rows.append(new_row)
+        existing.add(video.name)
+        added += 1
+
+    write_csv_rows(rows)
+    print(f"\nSaved {added} video row(s) to {CSV_FILE}")
 
 
 def load_log():
@@ -270,9 +445,21 @@ def main():
     parser = argparse.ArgumentParser(description="Official YouTube Data API batch uploader")
     parser.add_argument("--force", action="store_true", help="Re-upload successful videos")
     parser.add_argument("--dry-run", action="store_true", help="Preview only, do not upload")
+    parser.add_argument("--setup", action="store_true", help="Save common upload defaults")
+    parser.add_argument("--add-videos", action="store_true", help="Ask details for new videos in the videos folder")
+    parser.add_argument("--edit-existing", action="store_true", help="With --add-videos, also ask about videos already in uploads.csv")
     args = parser.parse_args()
 
     print("YouTube Data API Batch Uploader\n")
+
+    if args.setup:
+        setup_defaults()
+        return
+
+    if args.add_videos:
+        add_videos_interactively(include_existing=args.edit_existing)
+        return
+
     uploads = load_uploads()
 
     if args.dry_run:

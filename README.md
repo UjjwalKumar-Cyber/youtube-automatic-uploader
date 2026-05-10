@@ -34,6 +34,8 @@ cp uploads.example.csv uploads.csv
 
 Put videos inside `videos/`, optional thumbnails inside `thumbnails/`, then edit `uploads.csv`.
 
+Or use the interactive helper so you do not need to edit CSV manually.
+
 ## Google OAuth Setup
 
 1. Create a Google Cloud project.
@@ -70,6 +72,28 @@ Columns:
 - `topic`: used for AI metadata if title or description is blank
 
 ## Run
+
+Save your common defaults once:
+
+```bash
+python batch_upload_api.py --setup
+```
+
+This creates `uploader_config.json` locally with defaults such as privacy, default tags, default description, scheduling behavior, and thumbnail folder.
+
+After adding videos to `videos/`, ask for upload details one by one:
+
+```bash
+python batch_upload_api.py --add-videos
+```
+
+This creates or updates `uploads.csv` for new videos only.
+
+To re-edit videos already listed in `uploads.csv`:
+
+```bash
+python batch_upload_api.py --add-videos --edit-existing
+```
 
 Preview only:
 

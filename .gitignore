@@ -14,6 +14,7 @@ thumbnails/
 temp_metadata/
 upload_log.csv
 uploads.csv
+uploader_config.json
 geckodriver.log
 
 # Environment/secrets
