@@ -1,0 +1,8 @@
+youtube-uploader-selenium
+selenium-firefox
+selenium==4.9.1
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+openai
+tqdm

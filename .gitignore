@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+.DS_Store
+
+# Private Google/OAuth files
+client_secret.json
+youtube_token.pickle
+*.pickle
+cookies/
+
+# User upload data
+videos/
+thumbnails/
+temp_metadata/
+upload_log.csv
+uploads.csv
+geckodriver.log
+
+# Environment/secrets
+.env
+*.env

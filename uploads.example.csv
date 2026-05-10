@@ -1,0 +1,3 @@
+filename,title,description,tags,privacy,publish_at,thumbnail,topic
+example_video.mp4,My First Upload,This is an example description.,"tutorial,automation",private,,,
+scheduled_video.mp4,,, "youtube,api,automation",private,2026-05-20T15:00:00,thumbnails/thumb1.jpg,Python automation tutorial
