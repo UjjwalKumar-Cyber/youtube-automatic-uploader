@@ -51,6 +51,7 @@ def default_config():
         "publish_at": "",
         "thumbnail_folder": "thumbnails",
         "use_ai_when_blank": False,
+        "clean_log_on_success": False,
     }
 
 
@@ -113,6 +114,7 @@ def setup_defaults():
 
     config["thumbnail_folder"] = prompt_text("Thumbnail folder", config["thumbnail_folder"])
     config["use_ai_when_blank"] = prompt_yes_no("Use AI metadata when title/description are blank", config["use_ai_when_blank"])
+    config["clean_log_on_success"] = prompt_yes_no("Clean upload_log.csv after a run finishes with no failures", config["clean_log_on_success"])
 
     save_config(config)
     print(f"\nSaved defaults to {CONFIG_FILE}")
@@ -422,6 +424,22 @@ def upload_with_retries(youtube, row, force=False):
     return {"status": "failed", "video_id": "", "error": last_error or "Max retries exceeded"}
 
 
+def should_clean_log(results):
+    return bool(results) and all(result["status"] in {"success", "skipped"} for result in results)
+
+
+def clean_success_log(results):
+    if not should_clean_log(results):
+        print("Log kept because at least one upload failed or no videos were processed.")
+        return
+
+    if LOG_FILE.exists():
+        LOG_FILE.unlink()
+        print(f"Cleaned {LOG_FILE.name} after successful completion.")
+    else:
+        print("No upload log to clean.")
+
+
 def send_email_summary(results):
     if not EMAIL_FROM or not EMAIL_TO or not EMAIL_PASSWORD:
         return
@@ -448,6 +466,8 @@ def main():
     parser.add_argument("--setup", action="store_true", help="Save common upload defaults")
     parser.add_argument("--add-videos", action="store_true", help="Ask details for new videos in the videos folder")
     parser.add_argument("--edit-existing", action="store_true", help="With --add-videos, also ask about videos already in uploads.csv")
+    parser.add_argument("--clean-log", action="store_true", help="Clean upload_log.csv if the run finishes with no failures")
+    parser.add_argument("--clean-log-now", action="store_true", help="Clean upload_log.csv immediately and exit")
     args = parser.parse_args()
 
     print("YouTube Data API Batch Uploader\n")
@@ -458,6 +478,10 @@ def main():
 
     if args.add_videos:
         add_videos_interactively(include_existing=args.edit_existing)
+        return
+
+    if args.clean_log_now:
+        clean_success_log([{"status": "success"}])
         return
 
     uploads = load_uploads()
@@ -493,7 +517,15 @@ def main():
             time.sleep(DELAY_BETWEEN_UPLOADS)
 
     send_email_summary(results)
-    print("\nDone. Check upload_log.csv for results.")
+
+    config = load_config()
+    if args.clean_log or config.get("clean_log_on_success"):
+        clean_success_log(results)
+
+    if LOG_FILE.exists():
+        print("\nDone. Check upload_log.csv for results.")
+    else:
+        print("\nDone. Upload log is clean.")
 
 
 if __name__ == "__main__":

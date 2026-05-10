@@ -1,95 +1,62 @@
-# YouTube Automatic Uploader
+# Automatic YouTube Uploader
 
-Reusable batch uploader for YouTube videos using the official YouTube Data API.
+This folder is reusable. Put videos in `videos`, optional thumbnails in `thumbnails`, then either generate `uploads.csv` interactively or edit it manually.
 
-Created by **Ujjwal Kumar**, CSE student.
-
-## Features
-
-- Batch uploads from one `uploads.csv`
-- Official Google OAuth login
-- Private, public, and unlisted uploads
-- Scheduled publishing with `publish_at`
-- Optional thumbnail upload
-- AI title and description generation with OpenAI
-- Resume support using `upload_log.csv`
-- Retries with backoff
-- Dry-run mode
-- Optional email summary
-
-## Setup
+## First-Time Setup
 
 ```bash
+cd "/Volumes/DRIVE A/Automatic uploader"
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Create folders:
+Optional AI metadata:
 
 ```bash
-mkdir -p videos thumbnails
-cp uploads.example.csv uploads.csv
+export OPENAI_API_KEY="your-openai-api-key"
 ```
 
-Put videos inside `videos/`, optional thumbnails inside `thumbnails/`, then edit `uploads.csv`.
-
-Or use the interactive helper so you do not need to edit CSV manually.
-
-## Google OAuth Setup
-
-1. Create a Google Cloud project.
-2. Enable **YouTube Data API v3**.
-3. Configure OAuth consent screen as **External**.
-4. Add your Google account as a test user.
-5. Create OAuth client credentials for **Desktop app**.
-6. Download the JSON file.
-7. Place it in this project folder as `client_secret.json`.
-
-If it downloaded to your Downloads folder, run:
+Optional Gmail completion email:
 
 ```bash
-python install_client_secret.py
+export EMAIL_FROM="your.email@gmail.com"
+export EMAIL_TO="your.email@gmail.com"
+export EMAIL_APP_PASSWORD="your-gmail-app-password"
 ```
 
 ## CSV Format
 
+`uploads.csv` columns:
+
 ```csv
 filename,title,description,tags,privacy,publish_at,thumbnail,topic
-example_video.mp4,My Title,My description,"tag1,tag2",private,,,
-scheduled_video.mp4,,, "tag1,tag2",private,2026-05-20T15:00:00,thumbnails/thumb1.jpg,Video topic for AI
 ```
 
-Columns:
-
-- `filename`: video filename inside `videos/`
+- `filename`: required video filename inside `videos`
 - `title`: YouTube title
 - `description`: YouTube description
-- `tags`: comma-separated tags, wrapped in quotes
+- `tags`: use quotes when entering multiple tags, for example `"python,tutorial"`
 - `privacy`: `private`, `public`, or `unlisted`
-- `publish_at`: optional ISO date/time, for example `2026-05-20T15:00:00`
-- `thumbnail`: optional thumbnail path
-- `topic`: used for AI metadata if title or description is blank
+- `publish_at`: optional schedule time, for example `2026-05-20T15:00:00`
+- `thumbnail`: optional path, for example `thumbnails/thumb1.jpg`
+- `topic`: used for AI title and description if title or description is blank
 
 ## Run
 
-Save your common defaults once:
+Save common defaults once:
 
 ```bash
 python batch_upload_api.py --setup
 ```
 
-This creates `uploader_config.json` locally with defaults such as privacy, default tags, default description, scheduling behavior, and thumbnail folder.
-
-After adding videos to `videos/`, ask for upload details one by one:
+After putting new videos in `videos`, ask for details one by one and update `uploads.csv`:
 
 ```bash
 python batch_upload_api.py --add-videos
 ```
 
-This creates or updates `uploads.csv` for new videos only.
-
-To re-edit videos already listed in `uploads.csv`:
+To edit videos that are already listed in `uploads.csv`:
 
 ```bash
 python batch_upload_api.py --add-videos --edit-existing
@@ -101,41 +68,48 @@ Preview only:
 python batch_upload_api.py --dry-run
 ```
 
-Upload:
+Upload normally with the official YouTube Data API uploader:
 
 ```bash
 python batch_upload_api.py
 ```
 
-Force re-upload videos already marked successful:
+The API uploader needs a Google OAuth desktop credential saved as `client_secret.json` in this folder.
+
+If the credential downloads to your Downloads folder, run:
+
+```bash
+python install_client_secret.py
+```
+
+Older Selenium uploader, only if you specifically want browser automation:
+
+```bash
+python batch_upload.py
+```
+
+Force re-upload videos that already succeeded:
 
 ```bash
 python batch_upload_api.py --force
 ```
 
-## Optional OpenAI Metadata
+Clean `upload_log.csv` automatically after a run finishes with no failures:
 
 ```bash
-export OPENAI_API_KEY="your-openai-api-key"
+python batch_upload_api.py --clean-log
 ```
 
-## Optional Email Summary
+Or enable this once inside setup:
 
 ```bash
-export EMAIL_FROM="your.email@gmail.com"
-export EMAIL_TO="your.email@gmail.com"
-export EMAIL_APP_PASSWORD="your-gmail-app-password"
+python batch_upload_api.py --setup
 ```
 
-## Security
+To clean the log immediately:
 
-Never commit these files:
+```bash
+python batch_upload_api.py --clean-log-now
+```
 
-- `client_secret.json`
-- `youtube_token.pickle`
-- `.env`
-- `uploads.csv`
-- `upload_log.csv`
-- your real videos or thumbnails
-
-The `.gitignore` file already excludes them.
+The first upload may open Chrome so you can log in to YouTube.
